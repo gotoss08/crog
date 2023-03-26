@@ -395,9 +395,9 @@ void ActorProcessAction(Game* game, Actor* actor) {
 
 		if (destination_tile->type == TILE_TYPE_WALL) break;
 
+		tile->actor = NULL;
 		destination_tile->actor = actor;
 		actor->tile = destination_tile;
-		tile->actor = NULL;
 		
 		SDL_Log("Actor prev tile x=%d, y=%d", tile->position.x, tile->position.y);
 		SDL_Log("Actor new tile x=%d, y=%d", destination_tile->position.x, destination_tile->position.y);
@@ -505,6 +505,10 @@ int main(void) {
 					break;
 				case SDLK_KP_3:
 					player_actor->action = CreateMoveAction(1, 1);
+					break;
+				case SDL_SCANCODE_PERIOD:
+				case SDLK_KP_5:
+					player_actor->action = CreateMoveAction(0, 0);
 					break;
 				default:
 					break;
