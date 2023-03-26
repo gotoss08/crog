@@ -109,6 +109,10 @@ int rnd_int(int lower, int upper) {
 	return (rand() % (upper - lower + 1)) + lower;
 }
 
+float lerp(float v0, float v1, float t) {
+	return (1 - t) * v0 + t * v1;
+}
+
 Texture* LoadTexture(Game* game, char* file_path, char* texture_name) {
 
 	SDL_Texture* loaded_texture = IMG_LoadTexture(game->renderer, file_path);
@@ -275,6 +279,7 @@ void FreeDungeon(Dungeon* dungeon) {
 		for (int x = 0; x < dungeon->width; x++) {
 
 			int tile_index = y * dungeon->height + x;
+
 			Tile* tile = dungeon->tiles[tile_index];
 
 			if (tile->actor != NULL) {
@@ -286,6 +291,8 @@ void FreeDungeon(Dungeon* dungeon) {
 
 		}
 	}
+
+	SDL_Log("tiles end");
 
 	free(dungeon->tiles);
 
@@ -306,6 +313,7 @@ void GenerateDungeonTiles(Game* game) {
 			switch (tile_type) {
 			case TILE_TYPE_SPACE:
 				tile->type = TILE_TYPE_SPACE;
+				tile->sprite = NULL;
 				break;
 			case TILE_TYPE_WALL:
 				tile->type = TILE_TYPE_WALL;
@@ -462,8 +470,16 @@ int main(void) {
 	Actor* player_actor = CreateActor(ACTOR_TYPE_PLAYER, player_sprite);
 	DungeonPlaceActor(game.dungeon, rnd_int(0, game.dungeon->width - 1), rnd_int(0, game.dungeon->height - 1), player_actor);
 
+	Uint32 prev_time = SDL_GetTicks(); // delta time calculation
+
 	while (game.running == 1) {
-		
+
+		Uint32 cur_time = SDL_GetTicks();
+		float delta_time = (cur_time - prev_time) / 1000.0f;
+		prev_time = cur_time;
+
+		SDL_Log("delta time: %f", delta_time);
+
 		SDL_Event event;
 
 		while (SDL_PollEvent(&event)) {
@@ -529,6 +545,7 @@ int main(void) {
 		RenderDungeon(&game);
 
 		SDL_RenderPresent(game.renderer);
+		
 	}
 
 	FreeGame(&game);
