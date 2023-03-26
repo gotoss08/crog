@@ -2,19 +2,13 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "utils.h"
 #include "list.h"
+#include "generation.h"
 
 #define SDL_MAIN_HANDLED
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_image.h"
-
-int rnd_int(int lower, int upper) {
-	return (rand() % (upper - lower + 1)) + lower;
-}
-
-float lerp(float v0, float v1, float t) {
-	return (1 - t) * v0 + t * v1;
-}
 
 const int window_width = 1280;
 const int window_height = 720;
@@ -328,29 +322,43 @@ void GenerateDungeonTiles(Game* game) {
 
 	Dungeon* dungeon = game->dungeon;
 
+	short* map = GenerateCave(dungeon->width, dungeon->height, 0.4f, 2, 3, 4);
+
 	for (int y = 0; y < dungeon->height; y++) {
 		for (int x = 0; x < dungeon->width; x++) {
 
-			int tile_index = y * dungeon->height + x;
-			Tile* tile = dungeon->tiles[tile_index];
+			int index = y * dungeon->height + x;
 
-			int tile_type = rnd_int(TILE_TYPE_MIN + 1,  TILE_TYPE_MAX - 1);
+			short cell = map[index];
+			Tile* tile = dungeon->tiles[index];
 
-			switch (tile_type) {
-			case TILE_TYPE_SPACE:
-				tile->type = TILE_TYPE_SPACE;
-				tile->sprite = NULL;
-				break;
-			case TILE_TYPE_WALL:
+			if (cell == 1) {
 				tile->type = TILE_TYPE_WALL;
 				tile->sprite = CreateSprite(game, "wall");
-				break;
-			default:
-				break;
+			} else {
+				tile->type = TILE_TYPE_SPACE;
+				tile->sprite = NULL;
 			}
+
+			// int tile_type = rnd_int(TILE_TYPE_MIN + 1,  TILE_TYPE_MAX - 1);
+
+			// switch (tile_type) {
+			// case TILE_TYPE_SPACE:
+			// 	tile->type = TILE_TYPE_SPACE;
+			// 	tile->sprite = NULL;
+			// 	break;
+			// case TILE_TYPE_WALL:
+			// 	tile->type = TILE_TYPE_WALL;
+			// 	tile->sprite = CreateSprite(game, "wall");
+			// 	break;
+			// default:
+			// 	break;
+			// }
 
 		}
 	}
+
+	free(map);
 
 }
 
@@ -486,9 +494,9 @@ int main(void) {
 	Camera camera;
 	camera.position = (Vector2) {};
 	game.camera = camera;
-	SDL_Log("Camera initialized x=%d, y=%d", camera.position.x, camera.position.y);
+	SDL_Log("Camera initialized x=%f, y=%f", camera.position.x, camera.position.y);
 
-	game.dungeon = CreateDungeon(10, 10);
+	game.dungeon = CreateDungeon(50, 50);
 	GenerateDungeonTiles(&game);
 
 	SDL_Log("Loading sprites");
@@ -508,8 +516,8 @@ int main(void) {
 		float delta_time = (cur_time - prev_time) / 1000.0f;
 		prev_time = cur_time;
 
-		SDL_Log("delta time: %f", delta_time);
-		SDL_Log("camera %f, %f", game.camera.position.x, game.camera.position.y);
+		// SDL_Log("delta time: %f", delta_time);
+		// SDL_Log("camera %f, %f", game.camera.position.x, game.camera.position.y);
 
 		SDL_Event event;
 
