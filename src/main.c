@@ -27,6 +27,12 @@ typedef enum {
 	ACTOR_TYPE_MAX
 } ActorType;
 
+typedef enum {
+	ACTION_TYPE_MIN,
+	ACTION_TYPE_MOVE,
+	ACTION_TYPE_MAX
+} ActionType;
+
 typedef struct {
 	int r;
 	int g;
@@ -60,16 +66,31 @@ typedef struct {
 } Position;
 
 typedef struct {
-	ActorType actor_type;
-	Sprite* sprite;
-} Actor;
+	int x;
+	int y;
+} MoveActionData;
 
 typedef struct {
+	ActionType type;
+	void* data;
+} Action;
+
+typedef struct Tile Tile;
+
+typedef struct {
+	ActorType type;
+	Sprite* sprite;
+	Tile* tile;
+	Action* action;
+} Actor;
+
+struct Tile {
 	int index;
-	TileType tile_type;
+	TileType type;
+	Position position;
 	Sprite* sprite;
 	Actor* actor;
-} Tile;
+};
 
 typedef struct {
 	int width;
@@ -128,8 +149,8 @@ void LoadTextures(Game* game) {
 	SDL_Log("Loading game textures...");
 
 	game->textures_list = CreateList(100, sizeof(Texture), "Texture");
-	ListPush(game->textures_list, LoadTexture(game, "sprites/player.png", "player")); // (void*)
-	ListPush(game->textures_list, LoadTexture(game, "sprites/wall.png", "wall")); // (void*)
+	ListPush(game->textures_list, LoadTexture(game, "sprites/player.png", "player"));
+	ListPush(game->textures_list, LoadTexture(game, "sprites/wall.png", "wall"));
 	ListPrint(game->textures_list);
 
 	SDL_Log("Loading game textures complete.");
@@ -166,7 +187,7 @@ Sprite* CreateSprite(Game* game, char* texture_name) {
 	sprite->texture = TextureGetByName(game->textures_list, texture_name);
 
 	if (sprite->texture == NULL) {
-		SDL_Log("Create sprite error!\n");
+		SDL_Log("Sprite creation: texture loading error!\n");
 		return NULL;
 	}
 
@@ -174,8 +195,6 @@ Sprite* CreateSprite(Game* game, char* texture_name) {
 	sprite->height = sprite->texture->src_height;
 
 	sprite->color = COLOR_WHITE;
-
-	SDL_Log("Created sprite from texture \"%s\", size %dx%d\n", texture_name, sprite->width, sprite->height);
 
 	return sprite;
 }
@@ -195,10 +214,10 @@ void RenderSprite(Game* game, int x, int y, Sprite* sprite) {
 
 }
 
-Actor* CreateActor(ActorType actor_type, Sprite* sprite) {
-	
-	Actor* actor = malloc(sizeof(Actor));
-	actor->actor_type = actor_type;
+Actor* CreateActor(ActorType type, Sprite* sprite) {
+
+	Actor* actor = calloc(1, sizeof(Actor));
+	actor->type = type;
 	actor->sprite = sprite;
 
 	return actor;
@@ -218,6 +237,7 @@ void DungeonPlaceActor(Dungeon* dungeon, int x, int y, Actor* actor) {
 	int tile_index = y * dungeon->height + x;
 	Tile* tile = dungeon->tiles[tile_index];
 	tile->actor = actor;
+	actor->tile = tile;
 }
 
 Dungeon* CreateDungeon(int width, int height) {
@@ -234,7 +254,8 @@ Dungeon* CreateDungeon(int width, int height) {
 
 			Tile* tile = malloc(sizeof(Tile));
 			tile->index = tile_index;
-			tile->tile_type = TILE_TYPE_SPACE;
+			tile->position = (Position) {x, y};
+			tile->type = TILE_TYPE_SPACE;
 			tile->actor = NULL;
 
 			dungeon->tiles[tile_index] = tile;
@@ -257,7 +278,6 @@ void FreeDungeon(Dungeon* dungeon) {
 			Tile* tile = dungeon->tiles[tile_index];
 
 			if (tile->actor != NULL) {
-				SDL_Log("releasing actor");
 				FreeActor(tile->actor);
 			}
 
@@ -285,12 +305,10 @@ void GenerateDungeonTiles(Game* game) {
 
 			switch (tile_type) {
 			case TILE_TYPE_SPACE:
-				tile->tile_type = TILE_TYPE_SPACE;
-				// tile->sprite = NULL;
+				tile->type = TILE_TYPE_SPACE;
 				break;
 			case TILE_TYPE_WALL:
-				SDL_Log("tile %d is wall", tile->index);
-				tile->tile_type = TILE_TYPE_WALL;
+				tile->type = TILE_TYPE_WALL;
 				tile->sprite = CreateSprite(game, "wall");
 				break;
 			default:
@@ -313,7 +331,7 @@ void RenderDungeon(Game* game) {
 			Tile* tile = dungeon->tiles[tile_index];
 
 			if (tile->actor == NULL) {
-				switch (tile->tile_type) {
+				switch (tile->type) {
 				case TILE_TYPE_SPACE:
 					break;
 				case TILE_TYPE_WALL:
@@ -333,6 +351,65 @@ void RenderDungeon(Game* game) {
 
 		}
 	}
+
+}
+
+Action* CreateMoveAction(int x, int y) {
+	
+	Action* action = malloc(sizeof(Action));
+	action->type = ACTION_TYPE_MOVE;
+
+	MoveActionData* data = malloc(sizeof(MoveActionData));
+	data->x = x;
+	data->y = y;
+
+	action->data = data;
+
+	return action;
+
+}
+
+void ActorProcessAction(Game* game, Actor* actor) {
+
+	if (actor->action == NULL) return;
+
+	Action* action = actor->action;
+
+	switch (action->type) {
+	case ACTION_TYPE_MOVE:
+
+		MoveActionData* data = (MoveActionData*) action->data;
+
+		SDL_Log("Actor move by x=%d, y=%d", data->x, data->y);
+
+		Tile* tile = actor->tile;
+
+		int new_x = tile->position.x + data->x;
+		int new_y = tile->position.y + data->y;
+
+		if (new_x < 0 || new_x >= game->dungeon->width) break;
+		if (new_y < 0 || new_y >= game->dungeon->height) break;
+
+		int destination_tile_index = new_y * game->dungeon->height + new_x;
+		Tile* destination_tile = game->dungeon->tiles[destination_tile_index];
+
+		if (destination_tile->type == TILE_TYPE_WALL) break;
+
+		destination_tile->actor = actor;
+		actor->tile = destination_tile;
+		tile->actor = NULL;
+		
+		SDL_Log("Actor prev tile x=%d, y=%d", tile->position.x, tile->position.y);
+		SDL_Log("Actor new tile x=%d, y=%d", destination_tile->position.x, destination_tile->position.y);
+
+		break;
+	default:
+		break;
+	}
+
+	free(action->data);
+	free(action);
+	actor->action = NULL;
 
 }
 
@@ -402,12 +479,32 @@ int main(void) {
 					game.running = 0;
 					break;
 				case SDLK_UP:
+				case SDLK_KP_8:
+					player_actor->action = CreateMoveAction(0, -1);
 					break;
 				case SDLK_DOWN:
+				case SDLK_KP_2:
+					player_actor->action = CreateMoveAction(0, 1);
 					break;
 				case SDLK_LEFT:
+				case SDLK_KP_4:
+					player_actor->action = CreateMoveAction(-1, 0);
 					break;
 				case SDLK_RIGHT:
+				case SDLK_KP_6:
+					player_actor->action = CreateMoveAction(1, 0);
+					break;
+				case SDLK_KP_7:
+					player_actor->action = CreateMoveAction(-1, -1);
+					break;
+				case SDLK_KP_9:
+					player_actor->action = CreateMoveAction(1, -1);
+					break;
+				case SDLK_KP_1:
+					player_actor->action = CreateMoveAction(-1, 1);
+					break;
+				case SDLK_KP_3:
+					player_actor->action = CreateMoveAction(1, 1);
 					break;
 				default:
 					break;
@@ -420,18 +517,16 @@ int main(void) {
 			}
 		}
 
+		ActorProcessAction(&game, player_actor);
+
 		SDL_SetRenderDrawColor(game.renderer, 150, 50, 50, 255);
 		SDL_RenderClear(game.renderer);
-
-		// RenderSprite(&game, 100, 100, player_sprite);
-		// RenderSprite(&game, 200, 100, player2_sprite);
 
 		RenderDungeon(&game);
 
 		SDL_RenderPresent(game.renderer);
 	}
 
-	FreeSprite(player_sprite);
 	FreeGame(&game);
 
 	SDL_Log("SDL_DestroyWindow");
