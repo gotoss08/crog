@@ -8,10 +8,18 @@
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_image.h"
 
+int rnd_int(int lower, int upper) {
+	return (rand() % (upper - lower + 1)) + lower;
+}
+
+float lerp(float v0, float v1, float t) {
+	return (1 - t) * v0 + t * v1;
+}
+
 const int window_width = 1280;
 const int window_height = 720;
 const int rendering_scale = 8;
-const int tile_size = 32;
+const int tile_size = 8 * rendering_scale;
 
 typedef enum {
 	TILE_TYPE_MIN,
@@ -66,6 +74,31 @@ typedef struct {
 } Position;
 
 typedef struct {
+	float x;
+	float y;
+} Vector2;
+
+typedef struct {
+	Vector2 position;
+} Camera;
+
+void CameraUpdate(Camera* camera, int target_x, int target_y) {
+
+	float half_screen_w = window_width / 2;
+	float half_screen_h = window_height / 2;
+
+	float rel_target_x = -target_x + half_screen_w;
+	float rel_target_y = -target_y + half_screen_h;
+
+	float offset_x = lerp(camera->position.x, rel_target_x, 0.01f);
+	float offset_y = lerp(camera->position.y, rel_target_y, 0.01f);
+
+	camera->position.x = offset_x;
+	camera->position.y = offset_y;
+
+}
+
+typedef struct {
 	int x;
 	int y;
 } MoveActionData;
@@ -102,16 +135,9 @@ typedef struct {
 	int running;
 	SDL_Renderer* renderer;
 	List* textures_list;
+	Camera camera;
 	Dungeon* dungeon;
 } Game;
-
-int rnd_int(int lower, int upper) {
-	return (rand() % (upper - lower + 1)) + lower;
-}
-
-float lerp(float v0, float v1, float t) {
-	return (1 - t) * v0 + t * v1;
-}
 
 Texture* LoadTexture(Game* game, char* file_path, char* texture_name) {
 
@@ -212,7 +238,7 @@ void RenderSprite(Game* game, int x, int y, Sprite* sprite) {
 	SDL_SetTextureColorMod(sprite->texture->texture, sprite->color.r, sprite->color.g, sprite->color.b);
 	SDL_SetTextureAlphaMod(sprite->texture->texture, sprite->color.a);
 
-	SDL_Rect dstrect = {x, y, sprite->width * rendering_scale, sprite->height * rendering_scale};
+	SDL_Rect dstrect = {x + game->camera.position.x, y + game->camera.position.y, tile_size, tile_size};
 
 	SDL_RenderCopy(game->renderer, sprite->texture->texture, NULL, &dstrect);
 
@@ -338,13 +364,14 @@ void RenderDungeon(Game* game) {
 			int tile_index = y * dungeon->height + x;
 			Tile* tile = dungeon->tiles[tile_index];
 
+			int render_x = x * tile_size;
+			int render_y = y * tile_size;
+
 			if (tile->actor == NULL) {
 				switch (tile->type) {
 				case TILE_TYPE_SPACE:
 					break;
 				case TILE_TYPE_WALL:
-					int render_x = x * tile->sprite->width * rendering_scale;
-					int render_y = y * tile->sprite->width * rendering_scale;
 					RenderSprite(game, render_x, render_y, tile->sprite);
 					break;
 				default:
@@ -352,8 +379,6 @@ void RenderDungeon(Game* game) {
 				}
 			} else {
 				Actor* actor = tile->actor;
-				int render_x = x * actor->sprite->width * rendering_scale;
-				int render_y = y * actor->sprite->width * rendering_scale;
 				RenderSprite(game, render_x, render_y, actor->sprite);
 			}
 
@@ -445,7 +470,7 @@ int main(void) {
 		return -1;
 	}
 
-	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
+	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED); // SDL_RENDERER_PRESENTVSYNC
 
 	if (renderer == NULL) {
 		SDL_Log("Renderer initialization error!\n%s\n", SDL_GetError());
@@ -457,6 +482,11 @@ int main(void) {
 	game.renderer = renderer;
 
 	LoadTextures(&game);
+
+	Camera camera;
+	camera.position = (Vector2) {};
+	game.camera = camera;
+	SDL_Log("Camera initialized x=%d, y=%d", camera.position.x, camera.position.y);
 
 	game.dungeon = CreateDungeon(10, 10);
 	GenerateDungeonTiles(&game);
@@ -479,6 +509,7 @@ int main(void) {
 		prev_time = cur_time;
 
 		SDL_Log("delta time: %f", delta_time);
+		SDL_Log("camera %f, %f", game.camera.position.x, game.camera.position.y);
 
 		SDL_Event event;
 
@@ -539,13 +570,17 @@ int main(void) {
 
 		ActorProcessAction(&game, player_actor);
 
+		int camera_target_x = player_actor->tile->position.x * tile_size + tile_size / 2;
+		int camera_target_y = player_actor->tile->position.y * tile_size + tile_size / 2;
+		CameraUpdate(&game.camera, camera_target_x, camera_target_y);
+
 		SDL_SetRenderDrawColor(game.renderer, 150, 50, 50, 255);
 		SDL_RenderClear(game.renderer);
 
 		RenderDungeon(&game);
 
 		SDL_RenderPresent(game.renderer);
-		
+
 	}
 
 	FreeGame(&game);
